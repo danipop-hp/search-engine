@@ -1,8 +1,7 @@
 import { createContext, useState, useEffect, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
-  updateUrlParams,
-  findParamInURL,
-  removeFiltersFromURL
+  findParamInURL
 } from "../utils/urlManipulation";
 
 const TagsContext = createContext();
@@ -14,107 +13,109 @@ function arraysEqual(a, b) {
 }
 
 export const TagsProvider = ({ children }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [fields, setFields] = useState({
     orase: [],
     remote: [],
     company: [],
     experienta: []
   });
-  // string values
-  // make them empty if they don't exist in the URL.
+
+  // State hooks initialized from URL
   const [q, setQ] = useState(() => findParamInURL("q") || []);
   const [city, setCity] = useState(() => findParamInURL("orase") || []);
   const [remote, setRemote] = useState(() => findParamInURL("remote") || []);
   const [company, setCompany] = useState(() => findParamInURL("company") || []);
-  const [county] = useState([""]);
-  // take data from checkbox
+  const [county, setCounty] = useState(() => findParamInURL("judete") || []);
+
+  // Utility to extract current parameters from window hash or standard search
+  const getCurrentParams = useCallback(() => {
+    const rawSearch = location.hash.includes("?")
+      ? location.hash.split("?")[1]
+      : location.search;
+    return new URLSearchParams(rawSearch);
+  }, [location.hash, location.search]);
+
+  // Handle Checkbox Changes via Navigation (pushing new history entry)
   const handleCheckBoxChange = (e, type) => {
     const { value, checked } = e.target;
+    const params = getCurrentParams();
 
-    // Clone the current array
-    const updatedArray = [...fields[type]];
+    const currentValues = params.get(type) ? params.get(type).split(",") : [];
+    let updatedValues = [...currentValues];
 
     if (checked) {
-      // Add value to array
-      updatedArray.push(value);
-    } else {
-      // Remove value from array
-      const index = updatedArray.indexOf(value);
-      if (index !== -1) {
-        updatedArray.splice(index, 1);
+      if (!updatedValues.includes(value)) {
+        updatedValues.push(value);
       }
+    } else {
+      updatedValues = updatedValues.filter((item) => item !== value);
     }
-    // Update state with updated array
-    setFields((prevFields) => ({
-      ...prevFields,
-      [type]: updatedArray
-    }));
-    updateUrlParams({ [type]: updatedArray });
-    // Update the state for string creation.
-    if (type === "orase") {
-      setCity(updatedArray);
-    } else if (type === "remote") {
-      setRemote(updatedArray);
-    } else if (type === "company") {
-      setCompany(updatedArray);
+
+    if (updatedValues.length > 0) {
+      params.set(type, updatedValues.join(","));
+    } else {
+      params.delete(type);
     }
+
+    const targetPath = location.pathname.includes("rezultate")
+      ? location.pathname
+      : "/rezultate";
+
+    navigate(`${targetPath}?${params.toString()}`, { replace: false });
   };
 
-  // modify removeTag function to accept a parameter indicating the type of field
+  // Handle Removing Single Tag via Navigation (pushing new history entry)
   const removeTag = (type, value) => {
-    // Clone the current array based on the type
-    const updatedArray = [...fields[type]];
+    const params = getCurrentParams();
+    const currentParam = params.get(type);
 
-    // Find the index of the value to be removed
-    const index = updatedArray.indexOf(value);
+    if (!currentParam) return;
 
-    // If the value is found in the array, remove it
-    if (index !== -1) {
-      updatedArray.splice(index, 1);
+    const updatedValues = currentParam
+      .split(",")
+      .filter((item) => item.trim() !== String(value).trim());
+
+    if (updatedValues.length > 0) {
+      params.set(type, updatedValues.join(","));
+    } else {
+      params.delete(type);
     }
 
-    updateUrlParams({ [type]: updatedArray });
+    const targetPath = location.pathname.includes("rezultate")
+      ? location.pathname
+      : "/rezultate";
 
-    // Update state with the updated array
-    setFields((prevFields) => ({
-      ...prevFields,
-      [type]: updatedArray
-    }));
-    // Update the city array specifically to remove the corresponding text
-    if (type === "orase") {
-      const updatedCity = city.filter((city) => city !== value);
-      setCity(updatedCity);
-    }
-    if (type === "remote") {
-      const updatedRemote = remote.filter((remote) => remote !== value);
-      setRemote(updatedRemote);
-    }
-    if (type === "company") {
-      const updatedCompany = company.filter((company) => company !== value);
-      setCompany(updatedCompany);
-    }
+    navigate(`${targetPath}?${params.toString()}`, { replace: false });
   };
 
+  // Context Setters wrapped in useCallback
   const contextSetQ = useCallback((text) => {
-    // Bail out on unchanged content so the array reference is preserved and
-    // effects keyed on `q` (e.g. the results search-fetch effect) don't
-    // needlessly re-run, which would otherwise reset pagination to page 1.
     setQ((prev) => (arraysEqual(prev, text) ? prev : text));
-    updateUrlParams({ q: text });
   }, []);
 
   const contextSetCity = useCallback((text) => {
-    if (text[0]) {
-      setCity((prev) => (arraysEqual(prev, text) ? prev : text));
-    }
-    updateUrlParams({ orase: text });
+    setCity((prev) => (arraysEqual(prev, text) ? prev : text));
+  }, []);
+
+  const contextSetCounty = useCallback((text) => {
+    setCounty((prev) => (arraysEqual(prev, text) ? prev : text));
+  }, []);
+
+  const contextSetCompany = useCallback((text) => {
+    setCompany((prev) => (arraysEqual(prev, text) ? prev : text));
+  }, []);
+
+  const contextSetRemote = useCallback((text) => {
+    setRemote((prev) => (arraysEqual(prev, text) ? prev : text));
   }, []);
 
   const contextSetField = useCallback((fieldName, value) => {
     const allowedFields = ["orase", "remote", "company"];
-    if (!allowedFields.includes(fieldName) || !value) {
-      return;
-    }
+    if (!allowedFields.includes(fieldName) || !value) return;
+
     const newValue = Array.isArray(value) ? value : [value];
 
     switch (fieldName) {
@@ -137,45 +138,41 @@ export const TagsProvider = ({ children }) => {
     }));
   }, []);
 
-  // Update fields state from URL when component mounts
+  // Sync internal UI tag arrays whenever state primitives change from URL
   useEffect(() => {
     setFields({
-      orase: city,
-      remote: remote,
-      company: company,
+      orase: city.filter(Boolean),
+      remote: remote.filter(Boolean),
+      company: company.filter(Boolean),
       experienta: []
     });
   }, [city, remote, company]);
-  // state that have bolean true if fileds.array are empty.
+
   const [deletAll, setDeletAll] = useState(false);
-  // set the fileds back to empty
+
   const handleRemoveAllFilters = () => {
-    setFields({
-      orase: [],
-      remote: [],
-      company: [],
-      experienta: []
-    });
-    setCity([]);
-    setCompany([]);
-    setRemote([]);
-    removeFiltersFromURL();
+    const params = getCurrentParams();
+
+    // Preserve search string 'q' if present, clear filters
+    const qValue = params.get("q");
+    const newParams = new URLSearchParams();
+    if (qValue) newParams.set("q", qValue);
+
+    const targetPath = location.pathname.includes("rezultate")
+      ? location.pathname
+      : "/rezultate";
+
+    navigate(`${targetPath}?${newParams.toString()}`, { replace: false });
   };
+
   useEffect(() => {
-    // Function to check if all arrays in fields object are empty
-    const checkFieldsEmpty = () => {
-      const { orase, remote, company, experienta } = fields;
-      const allFieldsEmpty =
-        orase.length === 0 &&
-        remote.length === 0 &&
-        company.length === 0 &&
-        experienta.length === 0;
-      setDeletAll(allFieldsEmpty); // Set isEmpty to true if all fields are empty
-    };
-
-    checkFieldsEmpty(); // Call the function initially
-
-    // Add fields dependency to re-run the effect whenever fields change
+    const { orase, remote, company, experienta } = fields;
+    const allFieldsEmpty =
+      orase.length === 0 &&
+      remote.length === 0 &&
+      company.length === 0 &&
+      experienta.length === 0;
+    setDeletAll(allFieldsEmpty);
   }, [fields]);
 
   return (
@@ -193,7 +190,10 @@ export const TagsProvider = ({ children }) => {
         removeTag,
         contextSetQ,
         contextSetCity,
-        contextSetField
+        contextSetField,
+        contextSetCounty,
+        contextSetCompany,
+        contextSetRemote
       }}
     >
       {children}

@@ -1,38 +1,62 @@
-export const updateUrlParams = (paramsObj) => {
-  const currentHash = window.location.hash || "#/rezultate";
-  const [baseHash, queryString] = currentHash.split("?");
-  const params = new URLSearchParams(queryString ? queryString : "");
+export const updateUrlParams = (paramsToUpdate) => {
+  const currentHref = window.location.href;
+  const hashIndex = currentHref.indexOf("#");
 
-  Object.entries(paramsObj).forEach(([key, value]) => {
-    if (Array.isArray(value)) {
-      if (value.length > 0) {
-        params.set(key, value.join(","));
+  if (hashIndex === -1) {
+    const currentUrl = new URL(currentHref);
+    Object.entries(paramsToUpdate).forEach(([key, value]) => {
+      if (value === null || value === undefined || (Array.isArray(value) && value.length === 0) || value === "") {
+        currentUrl.searchParams.delete(key);
+      } else if (Array.isArray(value)) {
+        currentUrl.searchParams.set(key, value.filter(Boolean).join(","));
       } else {
-        params.delete(key);
+        currentUrl.searchParams.set(key, value);
       }
-    } else {
-      value ? params.set(key, value) : params.delete(key);
+    });
+    window.history.pushState(null, "", currentUrl.pathname + currentUrl.search);
+  } else {
+    const baseUrl = currentHref.substring(0, hashIndex);
+    const hashPathAndQuery = currentHref.substring(hashIndex);
+
+    const qIndex = hashPathAndQuery.indexOf("?");
+    let hashPath = hashPathAndQuery;
+    let searchParams = new URLSearchParams();
+
+    if (qIndex !== -1) {
+      hashPath = hashPathAndQuery.substring(0, qIndex);
+      searchParams = new URLSearchParams(hashPathAndQuery.substring(qIndex + 1));
     }
-  });
 
-  const newQueryStr = Array.from(params)
-    .map(([key, val]) => `${key}=${val}`)
-    .join("&");
+    Object.entries(paramsToUpdate).forEach(([key, value]) => {
+      if (value === null || value === undefined || (Array.isArray(value) && value.length === 0) || value === "") {
+        searchParams.delete(key);
+      } else if (Array.isArray(value)) {
+        searchParams.set(key, value.filter(Boolean).join(","));
+      } else {
+        searchParams.set(key, value);
+      }
+    });
 
-  const newHash = newQueryStr ? `${baseHash}?${newQueryStr}` : baseHash;
-  window.history.replaceState({}, "", newHash);
+    const queryString = searchParams.toString();
+    const newHash = queryString ? `${hashPath}?${queryString}` : hashPath;
+    const newUrl = baseUrl + newHash;
+
+    window.history.pushState(null, "", newUrl);
+  }
 };
 
 export const removeFiltersFromURL = () => {
-  const currentUrl = window.location.href;
-  const [baseUrl, queryString] = currentUrl.split("?");
+  const currentHash = window.location.hash || "#/rezultate";
+  const [baseHash, queryString] = currentHash.split("?");
   if (!queryString) return;
 
   const params = new URLSearchParams(queryString);
   const qParam = params.get("q");
-  const newUrl = qParam ? `${baseUrl}?q=${qParam}` : baseUrl;
+  
+  // Keep only 'q' parameter if present, drop all filter parameters
+  const newHash = qParam ? `${baseHash}?q=${qParam}` : baseHash;
 
-  window.history.pushState({}, "", newUrl);
+  window.history.replaceState({}, "", newHash);
 };
 
 export const getParamsFromURL = () => {
